@@ -68,15 +68,12 @@ class App:
         except AttributeError:
             machine = args
         params = {
-                "searchtype": "resource_name",
-                "searchcolumn": "resource_name",
-                "searchvalue": machine
-                }
+            "searchtype": "resource_name",
+            "searchcolumn": "resource_name",
+            "searchvalue": machine,
+        }
         response = self._make_request(
-            self.user.dc_token,
-            self.dc_url,
-            "/som/computers",
-            params=params
+            self.user.dc_token, self.dc_url, "/som/computers", params=params
         )
         res_json = response.json()["message_response"]["computers"][0]
         ip_address = res_json["ip_address"]
@@ -141,11 +138,11 @@ class User:
         domain = "bluegrasscell"
         auth_url = f"https://{self.dc_url}/desktop/authentication"
         params = {
-                "username": username,
-                "password": encoded_password,
-                "auth_type": "ad_authentication",
-                "domainName": domain
-                }
+            "username": username,
+            "password": encoded_password,
+            "auth_type": "ad_authentication",
+            "domainName": domain,
+        }
         response = requests.get(auth_url, params=params, verify=False).json()
         try:
             return self._update_token(
@@ -164,3 +161,51 @@ class User:
             json.dump(self.config, f)
 
         return token
+
+
+class Database:
+    def __init__(self, config):
+        # self.db_path = "%APPDATA%\ufinder\meraki.sqlite
+        self.config = config
+        try:
+            self.url = sqlite3.connect(
+                os.path.join(os.path.expandvars("$HOME"), ".ufinder", "meraki.sqlite")
+            )
+        except OSError:
+            print("Cannot open {}".format(self.url))
+            sys.exit(1)
+
+    def populate_data(self, cursor_obj):
+        with requests.Session() as s:
+            s.headers = {"X-Cisco-Meraki-API-Key": meraki_token}
+            nets = s.get(f"{meraki_host}/organizations/{org_id}/networks")
+            subnets = []
+            for each in nets.json():
+                if each["name"].startswith("Remote"):
+                    net_id = each["id"]
+                    subnet = s.get(f"{meraki_host}/networks/{net_id}/vlans/{vlan}")
+                    while subnet.status_code == 429:
+                        print("Retry: ", subnet.headers["Retry-After"])
+                        time.sleep(int(subnet.headers["Retry-After"]))
+                        subnet = s.get(f"{meraki_host}/networks/{net_id}/vlans/{vlan}")
+                    if subnet.status_code == 200:
+                        print(subnet)
+                        subnet = subnet.json()
+                        subnets.append((subnet["subnet"], each["name"]))
+
+        cursor_obj.executemany(
+            "INSERT INTO meraki (subnet, network_name) VALUES (?, ?)", subnets
+        )
+
+    def init_db(self):
+        con = sqlite3.connect("meraki.sqlite")
+        con.row_factory = sqlite3.Row
+        cur = con.cursor()
+
+        with open("schema.sql", "rt") as f:
+            cur.executescript(f.read())
+
+        self.populate_data(cur)
+
+        con.commit()
+        con.close()
