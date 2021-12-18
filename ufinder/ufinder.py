@@ -11,7 +11,6 @@ import requests
 
 # TODO: pathlib support
 # TODO: support connection errors
-# TODO: change URL queries to use request 'query' parameter
 
 
 class App:
@@ -49,11 +48,13 @@ class App:
             username = args.username
         except AttributeError:
             username = args
+        params = {
+            "searchtype": "agent_logged_on_users",
+            "searchcolumn": "agent_logged_on_users",
+            "searchvalue": username,
+        }
         response = self._make_request(
-            self.user.dc_token,
-            self.dc_url,
-            "/som/computers",
-            f"?searchtype=agent_logged_on_users&searchcolumn=agent_logged_on_users&searchvalue={username}",
+            self.user.dc_token, self.dc_url, "/som/computers", params=params
         )
         res_json = response.json()["message_response"]["computers"][0]
         ip_address = res_json["ip_address"]
@@ -66,11 +67,16 @@ class App:
             machine = args.computer_name
         except AttributeError:
             machine = args
+        params = {
+                "searchtype": "resource_name",
+                "searchcolumn": "resource_name",
+                "searchvalue": machine
+                }
         response = self._make_request(
             self.user.dc_token,
             self.dc_url,
             "/som/computers",
-            f"?searchtype=resource_name&searchcolumn=resource_name&searchvalue={machine}",
+            params=params
         )
         res_json = response.json()["message_response"]["computers"][0]
         ip_address = res_json["ip_address"]
@@ -81,11 +87,11 @@ class App:
             ip, network, subnet = "Not Found", "Not Found", "Not Found"
         return self._print_data(username, machine, ip, network, subnet)
 
-    def _make_request(self, token, url, resource, query=""):
+    def _make_request(self, token, url, resource, params=""):
         headers = {"Authorization": token}
-        url = f"https://{url}{resource}{query}"
+        url = f"https://{url}{resource}"
 
-        return requests.get(url, headers=headers, verify=False)
+        return requests.get(url, headers=headers, params=params, verify=False)
 
     def _correlate_ip(self, ip):
         ip_list = ip.split(",")
@@ -133,10 +139,14 @@ class User:
         password = getpass.getpass("AD Password: ")
         encoded_password = urlsafe_b64encode(password.encode("utf-8")).decode("utf-8")
         domain = "bluegrasscell"
-        auth_url = f"https://{self.dc_url}/desktop/authentication?"
-        auth_url += f"username={username}&password={encoded_password}"
-        auth_url += f"&auth_type=ad_authentication&domainName={domain}"
-        response = requests.get(auth_url, verify=False).json()
+        auth_url = f"https://{self.dc_url}/desktop/authentication"
+        params = {
+                "username": username,
+                "password": encoded_password,
+                "auth_type": "ad_authentication",
+                "domainName": domain
+                }
+        response = requests.get(auth_url, params=params, verify=False).json()
         try:
             return self._update_token(
                 response["message_response"]["authentication"]["auth_data"][
