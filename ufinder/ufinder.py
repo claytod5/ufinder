@@ -1,25 +1,20 @@
 import getpass
 import ipaddress
 import json
-import os
+import pathlib
 import sqlite3
 import sys
+import time
 from base64 import urlsafe_b64encode
 from pprint import pprint
 
 import requests
 
-# TODO: pathlib support
 # TODO: support connection errors
 
 
 class App:
-    def __init__(
-        self,
-        config_file=os.path.join(
-            os.path.expandvars("$HOME"), ".ufinder", "config.json"
-        ),
-    ):
+    def __init__(self, config_file=pathlib.Path.home() / ".ufinder" / "config.json"):
 
         try:
             with open(config_file, "rt") as f:
@@ -33,15 +28,9 @@ class App:
             api=self.config["dc_api"],
         )
         requests.packages.urllib3.disable_warnings()
-        self.user = User(self.config, config_file)
 
-        try:
-            self.db = sqlite3.connect(
-                os.path.join(os.path.expandvars("$HOME"), ".ufinder", "meraki.sqlite")
-            )
-        except OSError:
-            print("Cannot open database")
-            sys.exit(1)
+        self.user = User(self.config, config_file)
+        self.db = Database(self.config)
 
     def get_by_username(self, args):
         try:
@@ -119,7 +108,6 @@ class App:
 
 class User:
     def __init__(self, config, config_file):
-        # self.meraki_token = config["meraki_token"]
         self.dc_token = config["dc_token"]
         self.dc_url = "{host}{api}".format(
             host=config["dc_host"],
@@ -165,47 +153,58 @@ class User:
 
 class Database:
     def __init__(self, config):
-        # self.db_path = "%APPDATA%\ufinder\meraki.sqlite
         self.config = config
+        self.meraki_token = self.config["meraki_token"]
+        self.meraki_host = self.config["meraki_host"]
+        self.org_id = self.config["org_id"]
+        self.vlan = self.config["vlan"]
+
+        self.url = pathlib.Path.home() / ".ufinder" / "meraki.sqlite"
+
         try:
-            self.url = sqlite3.connect(
-                os.path.join(os.path.expandvars("$HOME"), ".ufinder", "meraki.sqlite")
-            )
+            self.conn = sqlite3.connect(self.url)
+
         except OSError:
             print("Cannot open {}".format(self.url))
             sys.exit(1)
 
-    def populate_data(self, cursor_obj):
+        else:
+            self.conn.row_factory = sqlite3.Row
+            self.cur = self.conn.cursor()
+
+    def populate_data(self):
         with requests.Session() as s:
-            s.headers = {"X-Cisco-Meraki-API-Key": meraki_token}
-            nets = s.get(f"{meraki_host}/organizations/{org_id}/networks")
+            s.headers = {"X-Cisco-Meraki-API-Key": self.meraki_token}
+            nets = s.get(f"{self.meraki_host}/organizations/{self.org_id}/networks")
             subnets = []
             for each in nets.json():
                 if each["name"].startswith("Remote"):
                     net_id = each["id"]
-                    subnet = s.get(f"{meraki_host}/networks/{net_id}/vlans/{vlan}")
+                    subnet = s.get(
+                        f"{self.meraki_host}/networks/{net_id}/vlans/{self.vlan}"
+                    )
                     while subnet.status_code == 429:
                         print("Retry: ", subnet.headers["Retry-After"])
                         time.sleep(int(subnet.headers["Retry-After"]))
-                        subnet = s.get(f"{meraki_host}/networks/{net_id}/vlans/{vlan}")
+                        subnet = s.get(
+                            f"{self.meraki_host}/networks/{net_id}/vlans/{self.vlan}"
+                        )
                     if subnet.status_code == 200:
                         print(subnet)
                         subnet = subnet.json()
                         subnets.append((subnet["subnet"], each["name"]))
 
-        cursor_obj.executemany(
+        self.cur.executemany(
             "INSERT INTO meraki (subnet, network_name) VALUES (?, ?)", subnets
         )
 
     def init_db(self):
-        con = sqlite3.connect("meraki.sqlite")
-        con.row_factory = sqlite3.Row
-        cur = con.cursor()
+        db_schema = pathlib.Path.home() / "schema.sql"
 
-        with open("schema.sql", "rt") as f:
-            cur.executescript(f.read())
+        with open(db_schema, "rt") as f:
+            self.cur.executescript(f.read())
 
-        self.populate_data(cur)
+        self.populate_data()
 
-        con.commit()
-        con.close()
+        self.conn.commit()
+        self.conn.close()
