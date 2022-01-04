@@ -5,5 +5,6 @@
   "meraki_token": "",
   "meraki_host": "https://api.meraki.com/api/v0",
   "org_id": 0,
-  "vlan": 0
+  "vlan": 0,
+  "first_time": true
 }

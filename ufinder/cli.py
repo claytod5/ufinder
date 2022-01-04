@@ -1,58 +1,33 @@
 import argparse
 import sys
+import time
 
 from ufinder import ufinder
 
-
-# def main():
-# 
-#     app = ufinder.App()
-# 
-#     parser = argparse.ArgumentParser(
-#         description="Find a user and their associated network equipment",
-#         epilog="Please report issues to dclayton@bluegrasscellular.com",
-#     )
-#     subparsers = parser.add_subparsers(title="Commands", prog="ufinder", metavar="")
-# 
-#     username = subparsers.add_parser(
-#         "username",
-#         usage="ufinder username [-h] [username]",
-#         help="Find user by username",
-#     )
-#     username.add_argument("username", type=str, help="A username. (i.e. mjackson)")
-#     username.set_defaults(func=app.get_by_username)
-# 
-#     computer = subparsers.add_parser(
-#         "computer",
-#         usage="ufinder computer [-h] [computer_name]",
-#         help="Find user by computer name",
-#     )
-#     computer.add_argument(
-#         "computer_name", type=str, help="A computer name. (i.e.  ET1INF01)"
-#     )
-#     computer.set_defaults(func=app.get_by_machine)
-# 
-#     args = parser.parse_args()
-# 
-#     try:
-#         print(args.func(args))
-#     except AttributeError:
-#         parser.print_help()
-# 
-#     return 0
 
 def interactive_main():
 
     app = ufinder.App()
 
     # TODO: make this happen the first time, but not afterwards
-    print(
-        """Welcome to ufinder!
+    if app.config["first_time"]:
+        print(
+            """Welcome to ufinder!
 
-    If this is the first launch of ufinder, you will want to initialize the database.
-    You can do this by selecting option 3.
-    Once that is complete, you can begin searching!"""
-    )
+        You will want to gather data from your Meraki dashboard and initialize the
+        database. Once that is complete, you can begin searching!
+
+        Would you like to do this now?
+        """
+        )
+        initialize_response = input("(Y/N): ")
+        if initialize_response:
+            print("Setting up database\n")
+            app.db.init_db()
+        else:
+            print("Goodbye!")
+            time.sleep(1)
+            sys.exit(1)
 
     search_method_prompt = """
 
@@ -68,21 +43,30 @@ def interactive_main():
 
     while True:
         print(search_method_prompt)
-        search_method = input("Selection: ")
+        menu_choice = input("Selection: ")
 
-        if search_method == "1":
+        if menu_choice == "1":
             query = input("Username: ")
             try:
                 app.get_by_username(query)
             except IndexError:
                 print("\nQuery Failed. Is the username correct?")
-        elif search_method == "2":
+        elif menu_choice == "2":
             query = input("Computer: ")
             try:
                 app.get_by_machine(query)
             except IndexError:
                 print("\nQuery Failed. Is the computer name correct?")
-        elif search_method == "0":
+        elif menu_choice == "3":
+            warning = input(
+                """This action will recreate the local database using data
+                    from the Meraki Dashboard.
+
+                    Are you sure you want to proceed? (Y/N) """
+            )
+            if warning == "Y":
+                app.db.init_db()
+        elif menu_choice == "0":
             sys.exit()
         else:
             print("\nInvalid Selection. Please select an option from the list.")

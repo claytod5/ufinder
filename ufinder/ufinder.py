@@ -172,7 +172,7 @@ class Database:
             self.conn.row_factory = sqlite3.Row
             self.cur = self.conn.cursor()
 
-    def populate_data(self):
+    def _populate_data(self):
         with requests.Session() as s:
             s.headers = {"X-Cisco-Meraki-API-Key": self.meraki_token}
             nets = s.get(f"{self.meraki_host}/organizations/{self.org_id}/networks")
@@ -204,7 +204,7 @@ class Database:
         with open(db_schema, "rt") as f:
             self.cur.executescript(f.read())
 
-        self.populate_data()
+        self._populate_data()
 
         self.conn.commit()
         self.conn.close()
