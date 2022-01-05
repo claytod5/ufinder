@@ -1,4 +1,3 @@
-import argparse
 import sys
 import time
 
@@ -73,4 +72,4 @@ def interactive_main():
 
 
 if __name__ == "__main__":
-    main()
+    interactive_main()

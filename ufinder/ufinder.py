@@ -123,7 +123,7 @@ class User:
         username = getpass.getuser()
         password = getpass.getpass("AD Password: ")
         encoded_password = urlsafe_b64encode(password.encode("utf-8")).decode("utf-8")
-        domain = "bluegrasscell"
+        domain = self.config["domain"]
         auth_url = f"https://{self.dc_url}/desktop/authentication"
         params = {
             "username": username,
